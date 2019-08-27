@@ -11,7 +11,7 @@ s3_df = dd.read_csv("s3://search-curated-sec/ChangeDateTime/withoutMulti/BOM-PAT
 
 # COMMAND ----------
 
-pd.set_option('display.max_columns', 40)
+pd.set_option('display.max_columns', 80)
 
 # COMMAND ----------
 
@@ -154,7 +154,40 @@ X["fno"] =le.fit_transform(X.fno)
 
 # COMMAND ----------
 
+dfH = pd.read_csv("s3://search-curated-sec/HolidayCalendar.csv")
+
+# COMMAND ----------
+
+dfH["date"] =dfH.searchdate.str.replace("-","").astype(int)
+dfH.drop(columns=["searchdate"], inplace=True)
+
+# COMMAND ----------
+
+dfH.head()
+
+# COMMAND ----------
+
+X = pd.merge(X, dfH, how='left', left_on = 'depdate', right_on = 'date')
+
+# COMMAND ----------
+
+X.drop(columns=["date"], inplace=True)
+
+# COMMAND ----------
+
 X.head()
+
+# COMMAND ----------
+
+X.isnull().any()
+
+# COMMAND ----------
+
+X.fillna(0, inplace=True)
+
+# COMMAND ----------
+
+X.loc[X.depdate==20180815]
 
 # COMMAND ----------
 
@@ -206,7 +239,7 @@ dnn = keras.Sequential()
 
 # COMMAND ----------
 
-dnn.add(keras.layers.Dense(32, input_shape= (8,), activation="relu"))
+dnn.add(keras.layers.Dense(X_train.shape[1], input_shape= (X_train.shape[1],), activation="relu"))
 dnn.output_shape
 
 # COMMAND ----------
@@ -226,29 +259,48 @@ dnn.output_shape
 
 # COMMAND ----------
 
-dnn.add(keras.layers.Dense(1, activation="relu"))
+dnn.add(keras.layers.Dense(y_train.shape[1], activation="relu"))
 dnn.output_shape
 
 # COMMAND ----------
 
-logdir = "logs/sud/"
-tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
+# logdir = "logs/sud/"
+# tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
 
 # COMMAND ----------
 
-#dnn.compile(optimizer="adam", loss="mean_squared_error", metrics=["accuracy"])
-dnn.compile(loss='mse', # keras.losses.mean_squared_error
-            optimizer=keras.optimizers.SGD(lr=0.2),
-            metrics=["accuracy"])
+def lr_schedule(epoch):
+  """
+  Returns a custom learning rate that decreases as epochs progress.
+  """
+  learning_rate = 0.2
+  if epoch > 10:
+    learning_rate = 0.02
+  if epoch > 20:
+    learning_rate = 0.01
+  if epoch > 50:
+    learning_rate = 0.005
+  return learning_rate
+
+# COMMAND ----------
+
+lr_callback = keras.callbacks.LearningRateScheduler(lr_schedule)
+
+# COMMAND ----------
+
+dnn.compile(optimizer="adam", loss="mean_squared_error", metrics=["accuracy"])
+#dnn.compile(loss='mse', # keras.losses.mean_squared_error
+#            optimizer=keras.optimizers.SGD(lr=0.2),
+#            metrics=["accuracy"])
 
 # COMMAND ----------
 
 dnn.fit(x=X_train, 
         y= y_train, 
         validation_data=(X_test, y_test), 
-        batch_size=150, 
-        callbacks=[tensorboard_callback],
-        epochs=3)
+        callbacks=[lr_callback],
+        batch_size=520,
+        epochs=10)
 
 # COMMAND ----------
 
